@@ -23,7 +23,9 @@ from big_sleep.resample import resample
 from big_sleep.biggan import BigGAN
 from big_sleep.clip import load, tokenize
 
-# assert torch.cuda.is_available(), 'CUDA must be available in order to use Big Sleep'
+assert torch.cuda.is_available(), 'CUDA must be available in order to use Big Sleep'
+torch.set_default_tensor_type('torch.cuda.FloatTensor')
+# device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # graceful keyboard interrupt
 
@@ -346,7 +348,7 @@ class Imagine(nn.Module):
             ema_decay = ema_decay,
             num_cutouts = num_cutouts,
             center_bias = center_bias,
-        )# .cuda()
+        ).cuda()
 
         self.model = model
 
@@ -383,7 +385,7 @@ class Imagine(nn.Module):
         self.text = text
         self.img = img
         if encoding is not None:
-            encoding = encoding# .cuda()
+            encoding = encoding.cuda()
         #elif self.create_story:
         #    encoding = self.update_story_encoding(epoch=0, iteration=1)
         elif text is not None and img is not None:
@@ -395,7 +397,7 @@ class Imagine(nn.Module):
         return encoding
 
     def create_text_encoding(self, text):
-        tokenized_text = tokenize(text)# .cuda()
+        tokenized_text = tokenize(text).cuda()
         with torch.no_grad():
             text_encoding = perceptor.encode_text(tokenized_text).detach()
         return text_encoding
@@ -403,7 +405,7 @@ class Imagine(nn.Module):
     def create_img_encoding(self, img):
         if isinstance(img, str):
             img = Image.open(img)
-        normed_img = self.clip_transform(img).unsqueeze(0)# .cuda()
+        normed_img = self.clip_transform(img).unsqueeze(0).cuda()
         with torch.no_grad():
             img_encoding = perceptor.encode_image(normed_img).detach()
         return img_encoding
@@ -432,15 +434,15 @@ class Imagine(nn.Module):
             text_path = datetime.now().strftime("%y%m%d-%H%M%S-") + text_path
 
         self.text_path = text_path
-        self.filename = Path(f'./{text_path}{self.seed_suffix}.png')
+        self.filename = Path(f'./results/{text_path}{self.seed_suffix}.png')
         self.encode_max_and_min(text, img=img, encoding=encoding, text_min=text_min) # Tokenize and encode each prompt
 
     def reset(self):
         self.model.reset()
-        self.model = self.model# .cuda()
+        self.model = self.model.cuda()
         self.optimizer = Adam(self.model.model.latents.parameters(), self.lr)
 
-    def train_step(self, epoch, i, pbar=None):
+    def train_step(self, epoch, i, text_id=None, pbar=None):
         total_loss = 0
 
         for _ in range(self.gradient_accumulate_every):
@@ -461,7 +463,8 @@ class Imagine(nn.Module):
                 image = self.model.model()[best].cpu()
                 self.model.model.latents.train()
 
-                save_image(image, str(self.filename))
+                save_image(image, str(self.filename)[:-4] + '_' + str(text_id) + '.png')
+                print("save image: ", str(self.filename)[:-4] + '_' + str(text_id) + '.png')
                 if pbar is not None:
                     pbar.update(1)
                 else:
